@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
+from apps.profiles.models import Profile
 
 User = get_user_model()
 
@@ -13,6 +14,14 @@ class BaseTestCase(APITestCase):
             name='Test',
             last_name='User',
             password='testpass123'
+        )
+        # Create profile for test user
+        Profile.objects.create(
+            user=self.user,
+            company_name="Test Company",
+            dni="12345678",
+            rif="J-12345678-9",
+            phone="+58123456789"
         )
         self.token = self.get_tokens_for_user(self.user)
         self.client.credentials(
