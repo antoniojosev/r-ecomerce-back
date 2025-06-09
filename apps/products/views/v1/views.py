@@ -41,7 +41,7 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     def get_serializer_class(self):
         if self.action in ['create']:
-            return ProductCreateSerializer
+            return ProductSerializer
         if self.action in ['update', 'partial_update']:
             return ProductUpdateSerializer
         if self.action in ['list']:
@@ -76,3 +76,17 @@ class ProductViewSet(viewsets.ModelViewSet):
             'paused': is_paused,
             'paused_date': product.paused_date
         }, status=status.HTTP_200_OK)
+    
+    @action(detail=False, methods=['get'], url_path='my')
+    def my(self, request):
+        """
+        List all products belonging to the logged-in user (seller).
+        """
+        user = request.user
+        queryset = self.get_queryset().filter(seller=user).order_by('-created_at')
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = ProductListSerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = ProductListSerializer(queryset, many=True, context={'request': request})
+        return Response(serializer.data)

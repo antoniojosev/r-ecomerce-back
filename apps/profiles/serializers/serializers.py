@@ -20,6 +20,7 @@ class AddressSerializer(serializers.ModelSerializer): # Create AddressSerializer
 
 class ProfileSerializer(serializers.ModelSerializer):
     address = serializers.SerializerMethodField()
+    role = serializers.SerializerMethodField()
 
     class Meta:
         model = Profile
@@ -30,13 +31,13 @@ class ProfileSerializer(serializers.ModelSerializer):
             'dni',
             'rif',
             'phone',
-            'description',
             'avatar',
-            'is_seller',
-            'is_verified',
             'logo',
+            'description',
+            'is_seller',
+            'role',
+            'is_verified',
             'created_at',
-            'updated_at',
             'address',
         )
         read_only_fields = ('user', 'is_verified') # Make certain fields read-only
@@ -49,3 +50,11 @@ class ProfileSerializer(serializers.ModelSerializer):
         if address is None:  # Check if address is None instead of using exists()
             return None
         return AddressSerializer(address).data
+
+    def get_role(self, obj):
+        """
+        Return the role of the user based on the profile.
+        """
+        if obj.is_seller:
+            return "seller"
+        return "user"

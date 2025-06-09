@@ -18,6 +18,8 @@ class CategorySerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
 
 class ProductImageSerializer(serializers.ModelSerializer):
+    image = serializers.SerializerMethodField()
+
     class Meta:
         model = ProductImage
         fields = [
@@ -25,6 +27,15 @@ class ProductImageSerializer(serializers.ModelSerializer):
             'image', 
             'order'
         ]
+    
+    def get_image(self, obj):
+        request = self.context.get('request')
+        if obj.image and hasattr(obj.image, 'url'):
+            url = obj.image.url
+            if request is not None:
+                return request.build_absolute_uri(url)
+            return url
+        return None
 
 class ProductFeatureSerializer(serializers.ModelSerializer):
     id = serializers.UUIDField(required=False)
@@ -60,31 +71,147 @@ class ProductVariantSerializer(serializers.ModelSerializer):
         model = ProductVariant
         fields = '__all__'
 
+
+
 class ProductSerializer(serializers.ModelSerializer):
-    images = ProductImageSerializer(many=True, read_only=True)
-    features = ProductFeatureSerializer(many=True, read_only=True)
-    specifications = ProductSpecificationSerializer(many=True, read_only=True)
-    brand = BrandSerializer(read_only=True)
-    category = CategorySerializer(read_only=True)
+    """
+    Serializer para el modelo Product con manejo de marcas, categorías e imágenes.
+    Permite crear marcas y categorías por nombre si no existen.
+    Permite cargar imágenes usando el campo 'uploaded_images'.
+    """
+    seller = serializers.HiddenField(
+        default=serializers.CurrentUserDefault()
+    )
+    # El campo images se usará solo para la respuesta
+    images = ProductImageSerializer(many=True, required=False, read_only=True)
+    # Para las imágenes que se envían en la solicitud
+    uploaded_images = serializers.ListField(
+        child=serializers.ImageField(max_length=1000, allow_empty_file=False, use_url=False),
+        write_only=True,
+        required=False
+    )
+    brand = serializers.CharField(required=False)
+    category = serializers.CharField(required=False)
 
     class Meta:
         model = Product
-        fields = [
-            'id',
-            'name',
-            'brand',
-            'description',
-            'category',
-            'sku',
-            'price',
-            'original_price',
-            'discount',
-            'seller',
-            'stock',
-            'images',
-            'features',
-            'specifications',
-        ]
+        fields = ['id', 'name', 'brand', 'description', 'category', 'sku', 'price', 'original_price', 
+                  'discount', 'seller', 'stock', 'paused', 'paused_date', 'images', 'variants', 'uploaded_images']
+
+    def create(self, validated_data):
+        print("=== INICIO CREACION DE PRODUCTO CON IMAGENES ===")
+        print(f"Datos recibidos (claves): {list(validated_data.keys())}")
+        
+        # 1. Extraer las imágenes y variantes
+        uploaded_images = validated_data.pop('uploaded_images', [])
+        variants_data = validated_data.pop('variants', [])
+        
+        print(f"Tenemos {len(uploaded_images)} imágenes para cargar")
+        
+        # 2. Procesar brand por nombre si es necesario
+        brand_data = validated_data.pop('brand', None)
+        if brand_data and isinstance(brand_data, str):
+            print(f"Creando/obteniendo marca: {brand_data}")
+            brand, created = Brand.objects.get_or_create(name=brand_data)
+            validated_data['brand'] = brand
+            if created:
+                print(f"Marca {brand_data} creada correctamente")
+        
+        # 3. Procesar category por nombre si es necesario
+        category_data = validated_data.pop('category', None)
+        if category_data and isinstance(category_data, str):
+            print(f"Creando/obteniendo categoría: {category_data}")
+            category, created = Category.objects.get_or_create(name=category_data)
+            validated_data['category'] = category
+            if created:
+                print(f"Categoría {category_data} creada correctamente")
+        
+        # 4. Crear el producto
+        try:
+            product = Product.objects.create(**validated_data)
+            print(f"Producto creado con ID: {product.id}")
+        except Exception as e:
+            print(f"Error al crear producto: {str(e)}")
+            raise
+        
+        # 5. Crear las imágenes relacionadas
+        for i, image_file in enumerate(uploaded_images):
+            try:
+                print(f"Intentando guardar imagen {i+1}: {getattr(image_file, 'name', 'Sin nombre')}")
+                image = ProductImage.objects.create(
+                    product=product,
+                    image=image_file,
+                    order=i
+                )
+                print(f"¡Imagen guardada correctamente con ID {image.id}!")
+            except Exception as e:
+                print(f"ERROR AL GUARDAR IMAGEN: {str(e)}")
+                # Continuar con las siguientes imágenes a pesar del error
+        
+        # Crear las variantes relacionadas
+        for variant_data in variants_data:
+            ProductVariant.objects.create(product=product, **variant_data)
+
+        return product
+
+    def update(self, instance, validated_data):
+        # Depuración completa para update
+        print("==================== INICIO DEBUG UPDATE ====================")
+        print("Tipo de validated_data:", type(validated_data))
+        print("Claves en validated_data:", list(validated_data.keys()))
+        print("UPDATE METHOD SE ESTA EJECUTANDO")
+        
+        # Extraer las imágenes subidas y variantes del producto
+        uploaded_images = validated_data.pop('uploaded_images', [])
+        print(f"Tipo de uploaded_images en UPDATE: {type(uploaded_images)} - Contenido: {uploaded_images}")
+        variants_data = validated_data.pop('variants', [])
+        
+        # Procesar brand si se proporciona como texto
+        brand_data = validated_data.pop('brand', None)
+        if brand_data and isinstance(brand_data, str):
+            brand, created = Brand.objects.get_or_create(name=brand_data)
+            instance.brand = brand
+            
+        # Procesar category si se proporciona como texto
+        category_data = validated_data.pop('category', None)
+        if category_data and isinstance(category_data, str):
+            category, created = Category.objects.get_or_create(name=category_data)
+            instance.category = category
+        
+        # Actualizar los campos del producto
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        # Actualizar las imágenes relacionadas
+        # Si hay imágenes subidas, crear nuevas entradas
+        for i, image_file in enumerate(uploaded_images):
+            try:
+                img = ProductImage.objects.create(
+                    product=instance, 
+                    image=image_file,
+                    order=i + ProductImage.objects.filter(product=instance).count()  # Agregar al final
+                )
+                print("DEBUG - Imagen actualizada con ID:", img.id)
+            except Exception as e:
+                print("DEBUG - Error al actualizar imagen:", str(e))
+        
+        # Actualizar las variantes relacionadas
+        for variant_data in variants_data:
+            variant_id = variant_data.get('id')
+            if variant_id:
+                variant = ProductVariant.objects.get(id=variant_id)
+                variant.name = variant_data.get('name', variant.name)
+                variant.value = variant_data.get('value', variant.value)
+                variant.stock = variant_data.get('stock', variant.stock)
+                variant.price = variant_data.get('price', variant.price)
+                variant.save()
+            else:
+                ProductVariant.objects.create(product=instance, **variant_data)
+
+        return instance
+
+
 
 class ProductCheckoutSerializer(serializers.ModelSerializer):
     images = ProductImageSerializer(many=True, read_only=True)

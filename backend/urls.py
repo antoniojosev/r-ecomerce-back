@@ -16,6 +16,8 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from django.conf import settings
+from django.conf.urls.static import static
 from apps.users.serializers.token import CustomTokenObtainPairView
 from rest_framework_simplejwt.views import (
     TokenRefreshView,
@@ -32,3 +34,7 @@ urlpatterns = [
     path('api/v1/cart/', include(('apps.cart.urls', 'apps.cart'), namespace='cart')),
     path('api/v1/wishlist/', include(('apps.wishlist.urls', 'apps.wishlist'), namespace='wishlist')),
 ]
+
+# Agregar configuración para servir archivos media en desarrollo
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
