@@ -309,20 +309,38 @@ class ProductUpdateSerializer(serializers.ModelSerializer):
     brand = BrandSerializer(read_only=True)
     category = CategorySerializer(read_only=True)
     images = ProductImageSerializer(many=True, read_only=True)
-    
+
     # Adding write-only fields for brand_id and category_id
     brand_id = serializers.PrimaryKeyRelatedField(
         queryset=Brand.objects.all(),
         source='brand',
         required=False,
-        write_only=True
+        write_only=True,
+        allow_null=True
     )
     category_id = serializers.PrimaryKeyRelatedField(
         queryset=Category.objects.all(),
         source='category',
         required=False,
-        write_only=True
+        write_only=True,
+        allow_null=True
     )
+    
+    # Adding text fields for brand and category names
+    brand_name = serializers.CharField(
+        required=False,
+        write_only=True,
+        allow_null=True
+    )
+    category_name = serializers.CharField(
+        required=False,
+        write_only=True,
+        allow_null=True
+    )
+    
+    # Read-only fields for response
+    brand = BrandSerializer(read_only=True)
+    category = CategorySerializer(read_only=True)
 
     class Meta:
         model = Product
@@ -331,9 +349,11 @@ class ProductUpdateSerializer(serializers.ModelSerializer):
             'name', 
             'brand', 
             'brand_id',
+            'brand_name',
             'description', 
             'category',
-            'category_id', 
+            'category_id',
+            'category_name', 
             'sku', 
             'price', 
             'original_price', 
@@ -347,10 +367,40 @@ class ProductUpdateSerializer(serializers.ModelSerializer):
             'paused_date'
         ]
     
+    def validate(self, attrs):
+        """
+        Validate that only one method is used for brand and category.
+        """
+        # Validate brand
+        if 'brand_id' in attrs and 'brand_name' in attrs:
+            raise serializers.ValidationError({
+                'brand': 'Cannot provide both brand_id and brand_name. Use only one.'
+            })
+        
+        # Validate category
+        if 'category_id' in attrs and 'category_name' in attrs:
+            raise serializers.ValidationError({
+                'category': 'Cannot provide both category_id and category_name. Use only one.'
+            })
+        
+        return attrs
+    
     @transaction.atomic
     def update(self, instance, validated_data):
         features_data = validated_data.pop('features', [])
         specifications_data = validated_data.pop('specifications', [])
+        
+        # Handle brand_name if provided
+        brand_name = validated_data.pop('brand_name', None)
+        if brand_name:
+            brand, created = Brand.objects.get_or_create(name=brand_name)
+            validated_data['brand'] = brand
+        
+        # Handle category_name if provided
+        category_name = validated_data.pop('category_name', None)
+        if category_name:
+            category, created = Category.objects.get_or_create(name=category_name)
+            validated_data['category'] = category
 
         # Actualizar los campos básicos del producto
         for attr, value in validated_data.items():

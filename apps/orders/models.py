@@ -1,10 +1,11 @@
 from django.db import models
 from django.utils import timezone
 from utils.models import BaseModel
-from apps.users.models import User
+from django.contrib.auth import get_user_model
 from apps.products.models import Product
 from apps.profiles.models import Address # Correct import path for Address
 
+User = get_user_model()
 class Question(BaseModel):
     """
     Represents a question or a reply within a discussion thread about a product.
