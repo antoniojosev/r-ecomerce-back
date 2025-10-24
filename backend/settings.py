@@ -61,6 +61,7 @@ THIRD_APPS = [
     "corsheaders",
     "django_filters",  # Added for DjangoFilterBackend
     "storages",
+    "django_extensions",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + MY_APPS + THIRD_APPS

@@ -27,6 +27,7 @@ class ProductImageSerializer(serializers.ModelSerializer):
             'image', 
             'order'
         ]
+        ordering = ['order']
     
     def get_image(self, obj):
         request = self.context.get('request')
@@ -83,7 +84,7 @@ class ProductSerializer(serializers.ModelSerializer):
         default=serializers.CurrentUserDefault()
     )
     # El campo images se usará solo para la respuesta
-    images = ProductImageSerializer(many=True, required=False, read_only=True)
+    images = serializers.SerializerMethodField()
     # Para las imágenes que se envían en la solicitud
     uploaded_images = serializers.ListField(
         child=serializers.ImageField(max_length=1000, allow_empty_file=False, use_url=False),
@@ -97,6 +98,10 @@ class ProductSerializer(serializers.ModelSerializer):
         model = Product
         fields = ['id', 'name', 'brand', 'description', 'category', 'sku', 'price', 'original_price', 
                   'discount', 'seller', 'stock', 'paused', 'paused_date', 'images', 'variants', 'uploaded_images']
+
+    def get_images(self, obj):
+        images = obj.images.all().order_by('order')
+        return ProductImageSerializer(images, many=True, context=self.context).data
 
     def create(self, validated_data):
         print("=== INICIO CREACION DE PRODUCTO CON IMAGENES ===")
@@ -456,7 +461,7 @@ class ProductUpdateSerializer(serializers.ModelSerializer):
         return instance
 
 class ProductListSerializer(serializers.ModelSerializer):
-    images = ProductImageSerializer(many=True, read_only=True)
+    images = serializers.SerializerMethodField()
     features = ProductFeatureSerializer(many=True, read_only=True)
     specifications = ProductSpecificationSerializer(many=True, read_only=True)
     category = CategorySerializer(read_only=True)
@@ -483,3 +488,7 @@ class ProductListSerializer(serializers.ModelSerializer):
             'paused',
             'paused_date'
         ]
+
+    def get_images(self, obj):
+        images = obj.images.all().order_by('order')
+        return ProductImageSerializer(images, many=True, context=self.context).data

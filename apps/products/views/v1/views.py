@@ -159,3 +159,82 @@ class ProductViewSet(viewsets.ModelViewSet):
             related_products.extend(random_products)
         
         return related_products[:MAX_RESULTS]
+
+    @action(detail=True, methods=['POST'], url_path='images', permission_classes=[IsAuthenticated, IsSellerOrAdmin])
+    def upload_images(self, request, pk=None):
+        """
+        Permite subir una o varias imágenes a un producto existente, asignando el orden desde el front.
+        Endpoint: POST /api/products/{uuid}/images/
+        Body: multipart/form-data con 'images' (varios archivos) y 'orders' (lista de enteros, obligatorio)
+        """
+        product = self.get_object()
+        images = request.FILES.getlist('images')
+        orders = request.data.getlist('orders') if 'orders' in request.data else []
+
+        if not images:
+            return Response({'detail': 'No images provided.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not orders or len(orders) != len(images):
+            return Response({'detail': 'Orders field is required and must match number of images.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        created_images = []
+        for idx, image_file in enumerate(images):
+            try:
+                order = int(orders[idx])
+            except (ValueError, IndexError):
+                return Response({'detail': f'Invalid order value for image {idx+1}.'}, status=status.HTTP_400_BAD_REQUEST)
+            img_obj = product.images.create(image=image_file, order=order)
+            created_images.append({
+                'id': img_obj.id,
+                'url': request.build_absolute_uri(img_obj.image.url),
+                'order': img_obj.order
+            })
+
+        return Response({'images': created_images}, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['delete'], url_path='images/delete', permission_classes=[IsAuthenticated, IsSellerOrAdmin])
+    def delete_images(self, request, pk=None):
+        """
+        Elimina una o varias imágenes asociadas a un producto.
+        Endpoint: DELETE /api/products/{uuid}/images/
+        Body: JSON con 'image_ids': lista de IDs de imágenes a eliminar
+        """
+        product = self.get_object()
+        image_ids = request.data.get('image_ids', [])
+        if not image_ids or not isinstance(image_ids, list):
+            return Response({'detail': 'image_ids (list) is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        deleted = []
+        for img_id in image_ids:
+            img_qs = product.images.filter(id=img_id)
+            if img_qs.exists():
+                img_qs.delete()
+                deleted.append(img_id)
+
+        return Response({'deleted': deleted}, status=status.HTTP_200_OK)
+    
+    @action(detail=True, methods=['post'], url_path='images/order', permission_classes=[IsAuthenticated, IsSellerOrAdmin])
+    def update_image_order(self, request, pk=None):
+        """
+        Actualiza el orden de una o varias imágenes asociadas a un producto.
+        Endpoint: PATCH /api/products/{uuid}/images/order/
+        Body: JSON con 'orders': lista de objetos {'id': <image_id>, 'order': <nuevo_orden>}
+        """
+        product = self.get_object()
+        orders = request.data.get('orders', [])
+        if not orders or not isinstance(orders, list):
+            return Response({'detail': 'orders (list) is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        updated = []
+        for item in orders:
+            img_id = item.get('id')
+            new_order = item.get('order')
+            if not img_id or new_order is None:
+                continue
+            img_qs = product.images.filter(id=img_id)
+            if img_qs.exists():
+                img = img_qs.first()
+                img.order = new_order
+                img.save()
+                updated.append({'id': img.id, 'order': img.order})
+
+        return Response({'updated': updated}, status=status.HTTP_200_OK)
