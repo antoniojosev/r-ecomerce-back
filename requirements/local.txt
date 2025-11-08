@@ -1,0 +1,9 @@
+# Local/dev requirements (extends base)
+-e base.txt
+# Dev tools
+flake8==7.1.1
+isort==6.0.0
+pylint==3.3.4
+autopep8==2.3.2
+pre_commit==4.1.0
+django-extensions==3.2.3

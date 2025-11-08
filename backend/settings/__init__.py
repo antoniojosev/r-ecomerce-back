@@ -7,8 +7,8 @@ import os
 DJANGO_ENV = os.getenv("env", "local").lower()
 
 if DJANGO_ENV == "prod" or DJANGO_ENV == "production":
-    from .settings.prod import *
+    from .prod import *
 elif DJANGO_ENV == "local" or DJANGO_ENV == "dev" or DJANGO_ENV == "development":
-    from .settings.local import *
+    from .local import *
 else:
     raise RuntimeError(f"Unknown DJANGO_ENV: {DJANGO_ENV}. Use 'local' or 'prod'.")
