@@ -3,3 +3,4 @@
 # Gunicorn for WSGI
 # Add any prod-only packages below
 gunicorn==23.0.0
+psycopg2-binary>=2.9
