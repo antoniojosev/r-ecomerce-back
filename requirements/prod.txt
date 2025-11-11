@@ -1,5 +1,5 @@
 # Production requirements (extends base)
--e base.txt
+-r base.txt
 # Gunicorn for WSGI
 # Add any prod-only packages below
 gunicorn==23.0.0
