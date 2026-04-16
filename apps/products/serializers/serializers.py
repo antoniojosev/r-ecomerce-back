@@ -33,6 +33,8 @@ class ProductImageSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if obj.image and hasattr(obj.image, 'url'):
             url = obj.image.url
+            if url.startswith(('http://', 'https://')):
+                return url
             if request is not None:
                 return request.build_absolute_uri(url)
             return url
