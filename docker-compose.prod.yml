@@ -1,0 +1,85 @@
+# Production compose for PaaS-style deploys (Dokploy, Coolify, plain VPS).
+#
+# Postgres is internal-only (no host port). The web service publishes no
+# port either — it joins the external `dokploy-network` so Dokploy's
+# Traefik routes a domain to it (Domains -> service `web`, port 8000).
+#
+# Media images live on Cloudflare R2, not on this host — the AWS_*/R2_*
+# variables below point at the same bucket the Render deploy used.
+#
+# The container entrypoint runs collectstatic + migrate on every start
+# (idempotent), so a fresh database bootstraps itself on first deploy.
+#
+# Required env (set in Dokploy's Environment tab):
+#   SECRET_KEY              Django secret
+#   DJANGO_ALLOWED_HOSTS    comma-separated, e.g. api.example.com
+#   POSTGRES_PASSWORD       database password
+#   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_STORAGE_BUCKET_NAME /
+#   AWS_S3_ENDPOINT_URL / R2_PUBLIC_DOMAIN        (Cloudflare R2)
+# Optional: EMAIL_* (see backend/settings/prod.py), GUNICORN_WORKERS.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: repuestos
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: repuestos
+    volumes:
+      - repuestos_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U repuestos"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  web:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?set DJANGO_ALLOWED_HOSTS}
+      DB_NAME: repuestos
+      DB_USER: repuestos
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_SSLMODE: disable
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?set AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?set AWS_SECRET_ACCESS_KEY}
+      AWS_STORAGE_BUCKET_NAME: ${AWS_STORAGE_BUCKET_NAME:?set AWS_STORAGE_BUCKET_NAME}
+      AWS_S3_ENDPOINT_URL: ${AWS_S3_ENDPOINT_URL:?set AWS_S3_ENDPOINT_URL}
+      R2_PUBLIC_DOMAIN: ${R2_PUBLIC_DOMAIN:-}
+      EMAIL_HOST: ${EMAIL_HOST:-}
+      EMAIL_HOST_USER: ${EMAIL_HOST_USER:-}
+      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:-}
+      DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-}
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-2}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/')\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    networks:
+      - default
+      - dokploy-network
+
+networks:
+  dokploy-network:
+    external: true
+
+volumes:
+  repuestos_pgdata:
